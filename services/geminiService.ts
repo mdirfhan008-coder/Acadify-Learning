@@ -1,17 +1,42 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { StudySet, QuizQuestion, Course, SubjectOverview } from "../types";
 
-// Ensure API key is available. 
-// In Vite with the define config, process.env.API_KEY will be replaced by the string value.
-const apiKey = process.env.API_KEY || '';
-
-if (!apiKey) {
-  console.warn("Gemini API Key is missing. AI features will not work. Please check your .env file or build configuration.");
-}
-
-const ai = new GoogleGenAI({ apiKey });
+// --- Configuration & Initialization ---
 
 const modelName = 'gemini-2.5-flash';
+let genAI: GoogleGenAI | null = null;
+
+/**
+ * Retrieves the Gemini API instance.
+ * Initializes it if not already initialized, checking:
+ * 1. Local Storage (user provided key)
+ * 2. Environment Variable (build time key)
+ */
+const getGenAI = () => {
+  if (genAI) return genAI;
+
+  // Check localStorage first (allows user override on published sites)
+  const storedKey = typeof localStorage !== 'undefined' ? localStorage.getItem('gemini_api_key') : null;
+  const envKey = process.env.API_KEY; // Injected by Vite
+
+  const apiKey = storedKey || envKey || '';
+
+  if (!apiKey) {
+    throw new Error("Gemini API Key is missing. Please open Settings and add your API Key to use AI features.");
+  }
+
+  genAI = new GoogleGenAI({ apiKey });
+  return genAI;
+};
+
+/**
+ * Updates the API key dynamically (called from Settings)
+ */
+export const updateApiKey = (key: string) => {
+  if (!key.trim()) return;
+  localStorage.setItem('gemini_api_key', key.trim());
+  genAI = new GoogleGenAI({ apiKey: key.trim() });
+};
 
 // --- Study Material Generation ---
 const studySetSchema: Schema = {
@@ -42,6 +67,7 @@ const studySetSchema: Schema = {
 
 export const generateStudyMaterial = async (topic: string, context?: string, language: string = 'English'): Promise<StudySet> => {
   try {
+    const ai = getGenAI();
     let prompt = `Generate a comprehensive study set for the topic: "${topic}" in ${language} language. Include a summary, key concepts, and flashcards.`;
     
     if (context) {
@@ -106,6 +132,7 @@ export const generateQuiz = async (
   language: string = 'English'
 ): Promise<QuizQuestion[]> => {
   try {
+    const ai = getGenAI();
     let prompt = `Create a ${difficulty} difficulty multiple-choice quiz with ${count} questions about: "${topic}" in ${language} language.`;
     
     if (context) {
@@ -135,6 +162,7 @@ export const generateQuiz = async (
 // --- Chat Tutor ---
 export const getChatResponse = async (history: { role: string; parts: { text: string }[] }[], message: string, language: string = 'English') => {
   try {
+    const ai = getGenAI();
     // Ensure history is clean and follows the SDK format
     const cleanHistory = history.map(h => ({
       role: h.role,
@@ -176,6 +204,7 @@ const courseSchema: Schema = {
 
 export const generateCourseSyllabus = async (topic: string, language: string = 'English'): Promise<Course> => {
   try {
+    const ai = getGenAI();
     const response = await ai.models.generateContent({
       model: modelName,
       contents: `Create a detailed course syllabus for a course about: "${topic}" in ${language}.`,
@@ -215,6 +244,7 @@ const subjectOverviewSchema: Schema = {
 
 export const getSubjectOverview = async (query: string, language: string = 'English'): Promise<SubjectOverview> => {
   try {
+    const ai = getGenAI();
     const response = await ai.models.generateContent({
       model: modelName,
       contents: `Provide a structured overview for the subject or topic: "${query}". This will be used to help a student explore learning paths. Respond in ${language}.`,
