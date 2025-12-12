@@ -1,7 +1,14 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { StudySet, QuizQuestion, Course, SubjectOverview } from "../types";
 
+// Ensure API key is available. 
+// In Vite with the define config, process.env.API_KEY will be replaced by the string value.
 const apiKey = process.env.API_KEY || '';
+
+if (!apiKey) {
+  console.warn("Gemini API Key is missing. AI features will not work. Please check your .env file or build configuration.");
+}
+
 const ai = new GoogleGenAI({ apiKey });
 
 const modelName = 'gemini-2.5-flash';
@@ -38,7 +45,8 @@ export const generateStudyMaterial = async (topic: string, context?: string, lan
     let prompt = `Generate a comprehensive study set for the topic: "${topic}" in ${language} language. Include a summary, key concepts, and flashcards.`;
     
     if (context) {
-      prompt += `\n\nBase your content specifically on the following source text:\n${context.substring(0, 30000)}...`; 
+      // Increase limit to 50k chars to accommodate larger PDF extracts
+      prompt += `\n\nBase your content specifically on the following source text. \nSOURCE TEXT:\n${context.substring(0, 50000)}...`; 
     }
 
     const response = await ai.models.generateContent({
@@ -101,7 +109,7 @@ export const generateQuiz = async (
     let prompt = `Create a ${difficulty} difficulty multiple-choice quiz with ${count} questions about: "${topic}" in ${language} language.`;
     
     if (context) {
-      prompt += `\n\nIMPORTANT: Generate questions specifically based on the content found in the following text. Do not use outside knowledge if the answer is in the text:\n${context.substring(0, 30000)}...`;
+      prompt += `\n\nIMPORTANT: Generate questions specifically based on the content found in the following text. Do not use outside knowledge if the answer is in the text:\n${context.substring(0, 50000)}...`;
     }
 
     const response = await ai.models.generateContent({
@@ -127,9 +135,15 @@ export const generateQuiz = async (
 // --- Chat Tutor ---
 export const getChatResponse = async (history: { role: string; parts: { text: string }[] }[], message: string, language: string = 'English') => {
   try {
+    // Ensure history is clean and follows the SDK format
+    const cleanHistory = history.map(h => ({
+      role: h.role,
+      parts: h.parts.map(p => ({ text: p.text }))
+    }));
+
     const chat = ai.chats.create({
       model: modelName,
-      history: history,
+      history: cleanHistory,
       config: {
         systemInstruction: `You are a helpful, encouraging, and knowledgeable academic tutor. You explain complex topics simply and guide students to understand concepts rather than just giving answers immediately. Respond in ${language}.`
       }
